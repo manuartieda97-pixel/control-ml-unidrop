@@ -36,22 +36,52 @@ if not archivo_ml or not archivo_unidrop:
     st.info("👆 Subí ambos archivos para comenzar el análisis.")
     st.stop()
 
-# Selector manual de pestaña y fila para Mercado Libre
+# Detectar automáticamente la pestaña con más datos en el Excel de ML
 if archivo_ml.name.endswith('.xlsx'):
     xl_ml = pd.ExcelFile(archivo_ml)
+    nombres_hojas = xl_ml.sheet_names
+    
+    # Buscar la pestaña "Publicaciones" o la que tenga mayor cantidad de filas
+    idx_mejor_hoja = 0
+    max_filas = -1
+    for idx, nombre in enumerate(nombres_hojas):
+        if "publicacion" in nombre.lower():
+            idx_mejor_hoja = idx
+            break
+        temp_df = pd.read_excel(archivo_ml, sheet_name=nombre, header=None)
+        if len(temp_df) > max_filas:
+            max_filas = len(temp_df)
+            idx_mejor_hoja = idx
+
     c_h1, c_h2 = st.columns(2)
-    hoja_ml = c_h1.selectbox("Pestaña del Excel de Mercado Libre:", xl_ml.sheet_names, index=1 if len(xl_ml.sheet_names) > 1 else 0)
-    fila_titulos_ml = c_h2.number_input("¿En qué número de fila empiezan los títulos reales de ML? (Probá 2, 3 o 4):", min_value=0, max_value=15, value=3)
+    hoja_ml = c_h1.selectbox("Pestaña del Excel de Mercado Libre:", nombres_hojas, index=idx_mejor_hoja)
     df_raw_ml = pd.read_excel(archivo_ml, sheet_name=hoja_ml, header=None)
 else:
-    fila_titulos_ml = st.number_input("¿En qué número de fila empiezan los títulos reales de ML?:", min_value=0, max_value=15, value=0)
     df_raw_ml = pd.read_csv(archivo_ml, sep=None, engine='python', header=None)
+    c_h2 = st.container()
 
-# Vista previa rápida de las primeras 6 filas para que veas cuál tiene los títulos
-with st.expander("👀 Ver primeras 6 filas crudas de Mercado Libre (para saber qué número de fila elegir arriba)", expanded=True):
-    st.dataframe(df_raw_ml.head(6))
+if df_raw_ml.empty:
+    st.error("❌ La pestaña seleccionada está vacía. Elegí otra pestaña en el menú de arriba.")
+    st.stop()
 
-# Aplicamos la fila elegida como títulos
+# Límite seguro para evitar IndexError
+max_fila_posible = max(0, len(df_raw_ml) - 1)
+fila_sugerida = min(3, max_fila_posible)
+fila_titulos_ml = c_h2.number_input(
+    "¿En qué número de fila empiezan los títulos reales de ML? (Mirá la vista previa abajo):", 
+    min_value=0, 
+    max_value=max_fila_posible, 
+    value=fila_sugerida
+)
+
+with st.expander("👀 Ver primeras 8 filas crudas de Mercado Libre (para verificar el número de fila)", expanded=True):
+    st.dataframe(df_raw_ml.head(8))
+
+# Construir tabla ML limpia desde la fila elegida
+if fila_titulos_ml >= len(df_raw_ml) - 1:
+    st.warning("⚠️ No hay filas de productos debajo de esa fila. Elegí un número de fila más chico arriba.")
+    st.stop()
+
 df_ml = df_raw_ml.iloc[fila_titulos_ml + 1:].copy()
 cols_unicas_ml = []
 cont = {}
@@ -66,7 +96,7 @@ for c in df_raw_ml.iloc[fila_titulos_ml].values:
 df_ml.columns = cols_unicas_ml
 df_ml = df_ml.reset_index(drop=True)
 
-# Lectura de Unidrop (que ya te funcionaba perfecto)
+# Lectura segura de Unidrop
 df_uni = pd.read_excel(archivo_unidrop) if archivo_unidrop.name.endswith('.xlsx') else pd.read_csv(archivo_unidrop, sep=None, engine='python')
 
 def limpiar_moneda(serie):
@@ -209,17 +239,3 @@ with tab1:
     else:
         con_match = con_match.sort_values(by="Margen (%)", ascending=True)
 
-    m1, m2, m3 = st.columns(3)
-    m1.metric("🟢 Rentables", len(con_match[con_match["Semáforo"] == "🟢 RENTABLE"]))
-    m2.metric("🟡 Margen Bajo", len(con_match[con_match["Semáforo"] == "🟡 BAJO"]))
-    m3.metric("🔴 Dando Pérdida", len(con_match[con_match["Semáforo"] == "🔴 PÉRDIDA"]))
-
-    def colorear_fila(fila):
-        if "🔴" in str(fila["Semáforo"]):
-            return ['background-color: rgba(255, 60, 60, 0.35)'] * len(fila)
-        if "🟡" in str(fila["Semáforo"]):
-            return ['background-color: rgba(255, 200, 0, 0.30)'] * len(fila)
-        return ['background-color: rgba(40, 200, 100, 0.25)'] * len(fila)
-
-    con_match["Precio Venta ($)"] = con_match["PRECIO_LIMPIO"]
-    con_match["Comisión ML ($)"] = con_match["COMISION_LIMPIA"]
