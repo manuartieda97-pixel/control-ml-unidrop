@@ -163,8 +163,8 @@ with tab2:
     if not con_match.empty:
         opciones_pub = con_match[COL_ID_ML].astype(str) + " | " + con_match["SKU_LIMPIO"] + " - " + con_match[COL_TITULO_ML].astype(str)
         seleccion = st.selectbox("Elegí publicación:", opciones_pub)
-        id_sel = seleccion.split(" | ")
-        fila_sel = con_match[con_match[COL_ID_ML].astype(str) == id_sel].iloc
+        id_sel = seleccion.split(" | ")[0]
+        fila_sel = con_match[con_match[COL_ID_ML].astype(str) == id_sel].iloc[0]
         
         c1, c2, c3 = st.columns(3)
         c1.metric("Precio Actual ML", f"${fila_sel[COL_PRECIO_ML]:,.2f}")
@@ -184,7 +184,7 @@ with tab2:
 
 with tab3:
     sku_buscar = st.selectbox("Seleccioná SKU de Unidrop:", df_uni["SKU_LIMPIO"].unique())
-    prod_uni = df_uni[df_uni["SKU_LIMPIO"] == sku_buscar].iloc
+    prod_uni = df_uni[df_uni["SKU_LIMPIO"] == sku_buscar].iloc[0]
     costo_base = float(prod_uni[COL_COSTO_UNI])
     st.info(f"📦 **Costo en Unidrop para {sku_buscar}:** ${costo_base:,.2f}")
 
