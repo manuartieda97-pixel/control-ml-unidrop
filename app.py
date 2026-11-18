@@ -64,28 +64,34 @@ def limpiar_moneda(serie):
         except: return 0.0
     return serie.apply(convertir)
 
-def idx_aprox(lista, palabras):
+# Buscador exacto que evita confundir "Código universal" con "SKU" o "Número de producto" con "Título"
+def idx_exacto(lista, exactas, parciales, excluir=[]):
     for i, col in enumerate(lista):
-        if any(p.lower() in str(col).lower() for p in palabras):
-            return i
+        c_low = str(col).lower().strip()
+        if any(ex in c_low for ex in excluir): continue
+        if c_low in exactas: return i
+    for i, col in enumerate(lista):
+        c_low = str(col).lower().strip()
+        if any(ex in c_low for ex in excluir): continue
+        if any(p in c_low for p in parciales): return i
     return 0
 
 df_ml = leer_ml(archivo_ml)
 df_uni = pd.read_excel(archivo_unidrop) if archivo_unidrop.name.endswith('.xlsx') else pd.read_csv(archivo_unidrop, sep=None, engine='python')
 cols_ml, cols_uni = list(df_ml.columns), list(df_uni.columns)
 
-with st.expander("🔗 Verificación de columnas (auto-completado)", expanded=False):
+with st.expander("🔗 Verificación de columnas (revisá que SKU y Título estén bien)", expanded=True):
     c_ml, c_uni = st.columns(2)
-    COL_ID_ML = c_ml.selectbox("ID Publicación (MLA):", cols_ml, index=idx_aprox(cols_ml, ["número", "id", "publicación"]))
-    COL_SKU_ML = c_ml.selectbox("SKU en ML:", cols_ml, index=idx_aprox(cols_ml, ["sku", "código"]))
-    COL_TITULO_ML = c_ml.selectbox("Título:", cols_ml, index=idx_aprox(cols_ml, ["título", "nombre", "producto"]))
-    COL_PRECIO_ML = c_ml.selectbox("Precio venta ($):", cols_ml, index=idx_aprox(cols_ml, ["precio"]))
-    COL_TIPO_PUB = c_ml.selectbox("Tipo publicación:", cols_ml, index=idx_aprox(cols_ml, ["tipo", "exposición", "cuotas"]))
-    COL_COMISION_ML = c_ml.selectbox("Comisión ML ($):", cols_ml, index=idx_aprox(cols_ml, ["cargo", "comisión", "vender"]))
-    COL_FORMA_ENVIO = c_ml.selectbox("Forma envío:", cols_ml, index=idx_aprox(cols_ml, ["forma", "logística", "envío"]))
-    COL_COSTO_ENVIO_ML = c_ml.selectbox("Costo envío ML ($):", cols_ml, index=idx_aprox(cols_ml, ["costo de envío", "envío"]))
-    COL_SKU_UNI = c_uni.selectbox("SKU en Unidrop:", cols_uni, index=idx_aprox(cols_uni, ["sku", "código"]))
-    COL_COSTO_UNI = c_uni.selectbox("Costo producto ($):", cols_uni, index=idx_aprox(cols_uni, ["costo", "precio"]))
+    COL_ID_ML = c_ml.selectbox("ID Publicación (MLA):", cols_ml, index=idx_exacto(cols_ml, ["número de publicación"], ["publicación"]))
+    COL_SKU_ML = c_ml.selectbox("SKU en ML:", cols_ml, index=idx_exacto(cols_ml, ["sku", "número de producto"], ["sku"], excluir=["universal"]))
+    COL_TITULO_ML = c_ml.selectbox("Título de la publicación:", cols_ml, index=idx_exacto(cols_ml, ["título"], ["título"], excluir=["número"]))
+    COL_PRECIO_ML = c_ml.selectbox("Precio venta ($):", cols_ml, index=idx_exacto(cols_ml, ["precio"], ["precio"]))
+    COL_TIPO_PUB = c_ml.selectbox("Tipo publicación (Clásica/Premium):", cols_ml, index=idx_exacto(cols_ml, ["tipo de publicación"], ["tipo", "exposición"]))
+    COL_COMISION_ML = c_ml.selectbox("Comisión ML ($):", cols_ml, index=idx_exacto(cols_ml, ["cargo por vender"], ["cargo", "comisión"]))
+    COL_FORMA_ENVIO = c_ml.selectbox("Forma envío:", cols_ml, index=idx_exacto(cols_ml, ["forma de envío"], ["forma", "logística", "envío"]))
+    COL_COSTO_ENVIO_ML = c_ml.selectbox("Costo envío ML ($):", cols_ml, index=idx_exacto(cols_ml, ["costo de envío"], ["costo de envío"]))
+    COL_SKU_UNI = c_uni.selectbox("SKU en Unidrop:", cols_uni, index=idx_exacto(cols_uni, ["sku"], ["sku", "código"]))
+    COL_COSTO_UNI = c_uni.selectbox("Costo producto ($):", cols_uni, index=idx_exacto(cols_uni, ["costo sin iva", "costo"], ["costo", "precio"]))
 
 df_ml["SKU_LIMPIO"] = df_ml[COL_SKU_ML].astype(str).str.strip().str.upper()
 df_uni["SKU_LIMPIO"] = df_uni[COL_SKU_UNI].astype(str).str.strip().str.upper()
@@ -160,9 +166,3 @@ with tab2:
         c1.metric("Precio Actual ML", f"${fila['PRECIO_LIMPIO']:,.2f}")
         c2.metric("Recibís Actual ML", f"${fila['Recibís en ML ($)']:,.2f}")
         c3.metric("Costo Unidrop", f"${fila['COSTO_LIMPIO']:,.2f}")
-        c4.metric("Ganancia Actual", f"${fila['Ganancia Neta ($)']:,.2f}", f"{fila['Margen (%)']:.1f}%")
-        nuevo_p = st.number_input("NUEVO precio de prueba ($):", min_value=1.0, value=max(float(fila['PRECIO_LIMPIO']), 1.0), step=500.0)
-        n_recibis = nuevo_p - (nuevo_p * fila["Tasa_Comision_ML"]) - fila["Envío Real ($)"] - (nuevo_p * (porcentaje_iibb / 100))
-        n_ganancia = n_recibis - fila['COSTO_LIMPIO']
-        n_margen = (n_ganancia / nuevo_p) * 100
-        r1, r2, r3 = st.columns(3)
