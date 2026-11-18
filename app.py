@@ -64,7 +64,6 @@ def limpiar_moneda(serie):
         except: return 0.0
     return serie.apply(convertir)
 
-# Buscador exacto que evita confundir "Código universal" con "SKU" o "Número de producto" con "Título"
 def idx_exacto(lista, exactas, parciales, excluir=[]):
     for i, col in enumerate(lista):
         c_low = str(col).lower().strip()
@@ -80,15 +79,16 @@ df_ml = leer_ml(archivo_ml)
 df_uni = pd.read_excel(archivo_unidrop) if archivo_unidrop.name.endswith('.xlsx') else pd.read_csv(archivo_unidrop, sep=None, engine='python')
 cols_ml, cols_uni = list(df_ml.columns), list(df_uni.columns)
 
-with st.expander("🔗 Verificación de columnas (revisá que SKU y Título estén bien)", expanded=True):
+with st.expander("🔗 Verificación de columnas (clic para revisar)", expanded=False):
     c_ml, c_uni = st.columns(2)
     COL_ID_ML = c_ml.selectbox("ID Publicación (MLA):", cols_ml, index=idx_exacto(cols_ml, ["número de publicación"], ["publicación"]))
     COL_SKU_ML = c_ml.selectbox("SKU en ML:", cols_ml, index=idx_exacto(cols_ml, ["sku", "número de producto"], ["sku"], excluir=["universal"]))
     COL_TITULO_ML = c_ml.selectbox("Título de la publicación:", cols_ml, index=idx_exacto(cols_ml, ["título"], ["título"], excluir=["número"]))
     COL_PRECIO_ML = c_ml.selectbox("Precio venta ($):", cols_ml, index=idx_exacto(cols_ml, ["precio"], ["precio"]))
-    COL_TIPO_PUB = c_ml.selectbox("Tipo publicación (Clásica/Premium):", cols_ml, index=idx_exacto(cols_ml, ["tipo de publicación"], ["tipo", "exposición"]))
+    COL_TIPO_PUB = c_ml.selectbox("Tipo publicación (Cuotas):", cols_ml, index=idx_exacto(cols_ml, ["tipo de publicación"], ["tipo", "exposición"]))
     COL_COMISION_ML = c_ml.selectbox("Comisión ML ($):", cols_ml, index=idx_exacto(cols_ml, ["cargo por vender"], ["cargo", "comisión"]))
-    COL_FORMA_ENVIO = c_ml.selectbox("Forma envío:", cols_ml, index=idx_exacto(cols_ml, ["forma de envío"], ["forma", "logística", "envío"]))
+    COL_FORMA_ENVIO = c_ml.selectbox("Forma de envío:", cols_ml, index=idx_exacto(cols_ml, ["forma de envío", "envío"], ["forma", "logística"]))
+    COL_ENVIO_GRATIS = c_ml.selectbox("¿Envío gratis?:", cols_ml, index=idx_exacto(cols_ml, ["envío gratis"], ["gratis"]))
     COL_COSTO_ENVIO_ML = c_ml.selectbox("Costo envío ML ($):", cols_ml, index=idx_exacto(cols_ml, ["costo de envío"], ["costo de envío"]))
     COL_SKU_UNI = c_uni.selectbox("SKU en Unidrop:", cols_uni, index=idx_exacto(cols_uni, ["sku"], ["sku", "código"]))
     COL_COSTO_UNI = c_uni.selectbox("Costo producto ($):", cols_uni, index=idx_exacto(cols_uni, ["costo sin iva", "costo"], ["costo", "precio"]))
@@ -103,13 +103,38 @@ df_cruce["PRECIO_LIMPIO"] = limpiar_moneda(df_cruce[COL_PRECIO_ML])
 df_cruce["COMISION_LIMPIA"] = limpiar_moneda(df_cruce[COL_COMISION_ML]).abs()
 df_cruce["ENVIO_ML_LIMPIO"] = limpiar_moneda(df_cruce[COL_COSTO_ENVIO_ML])
 
+# Traducir explícitamente Cuotas y Tipo de Envío para cada fila
+def describir_condiciones(fila):
+    tipo_raw = str(fila.get(COL_TIPO_PUB, "")).lower()
+    if "premium" in tipo_raw:
+        txt_cuotas = "💳 Con Cuotas (Premium)"
+    elif "clásica" in tipo_raw or "clasica" in tipo_raw:
+        txt_cuotas = "💵 Sin Cuotas (Clásica)"
+    else:
+        txt_cuotas = f"📋 {fila.get(COL_TIPO_PUB, 'Estándar')}"
+
+    forma_raw = str(fila.get(COL_FORMA_ENVIO, "")).lower()
+    gratis_raw = str(fila.get(COL_ENVIO_GRATIS, "")).lower()
+    costo_ml = float(fila.get("ENVIO_ML_LIMPIO", 0))
+
+    if "flex" in forma_raw:
+        txt_envio = "🛵 Envío Flex"
+    elif "sí" in gratis_raw or "si" in gratis_raw or "gratis" in forma_raw or "vendedor" in forma_raw or abs(costo_ml) > 0:
+        txt_envio = "📦 Envío Gratis (A tu cargo)"
+    else:
+        txt_envio = "🛒 Envío a cargo comprador"
+
+    return f"{txt_cuotas} | {txt_envio}"
+
 def calc_envio(fila):
     forma = str(fila.get(COL_FORMA_ENVIO, "")).lower()
+    gratis = str(fila.get(COL_ENVIO_GRATIS, "")).lower()
     costo_ml = float(fila.get("ENVIO_ML_LIMPIO", 0))
     if "flex" in forma: return max(0.0, costo_moto_flex - abs(costo_ml)) if costo_ml != 0 else float(costo_moto_flex)
-    if "gratis" in forma or "vendedor" in forma or abs(costo_ml) > 0: return abs(costo_ml)
+    if "sí" in gratis or "si" in gratis or "gratis" in forma or "vendedor" in forma or abs(costo_ml) > 0: return abs(costo_ml)
     return 0.0
 
+df_cruce["Condiciones (Cuotas y Envío)"] = df_cruce.apply(describir_condiciones, axis=1)
 df_cruce["Envío Real ($)"] = df_cruce.apply(calc_envio, axis=1)
 df_cruce["IIBB Estimado ($)"] = df_cruce["PRECIO_LIMPIO"] * (porcentaje_iibb / 100)
 df_cruce["Tasa_Comision_ML"] = np.where(df_cruce["PRECIO_LIMPIO"] > 0, df_cruce["COMISION_LIMPIA"] / df_cruce["PRECIO_LIMPIO"], 0.15)
@@ -120,7 +145,6 @@ df_cruce["Margen (%)"] = np.where(df_cruce["PRECIO_LIMPIO"] > 0, (df_cruce["Gana
 divisor = 1 - df_cruce["Tasa_Comision_ML"] - (porcentaje_iibb / 100) - (margen_minimo_sano / 100)
 df_cruce["Precio Sugerido ($)"] = np.where(divisor > 0.05, (df_cruce["COSTO_LIMPIO"] + df_cruce["Envío Real ($)"]) / divisor, 0)
 df_cruce["Semáforo"] = np.where(df_cruce["Ganancia Neta ($)"] < 0, "🔴 PÉRDIDA", np.where(df_cruce["Margen (%)"] < margen_minimo_sano, "🟡 BAJO", "🟢 RENTABLE"))
-df_cruce["Características"] = df_cruce[COL_TIPO_PUB].astype(str) + " | " + df_cruce[COL_FORMA_ENVIO].astype(str)
 
 df_match_total = df_cruce.dropna(subset=["COSTO_LIMPIO"]).copy()
 sin_match = df_cruce[df_cruce["COSTO_LIMPIO"].isna()]
@@ -128,41 +152,37 @@ sin_match = df_cruce[df_cruce["COSTO_LIMPIO"].isna()]
 tab1, tab2, tab3 = st.tabs(["📊 1. Publicaciones Activas", "✏️ 2. Simular Precio", "🆕 3. Cotizar Nuevo"])
 
 with tab1:
-    c_ord, c_busq = st.columns(2)
+    # Contadores totales del Semáforo arriba de todo
+    cant_verde = len(df_match_total[df_match_total["Semáforo"] == "🟢 RENTABLE"])
+    cant_amarillo = len(df_match_total[df_match_total["Semáforo"] == "🟡 BAJO"])
+    cant_rojo = len(df_match_total[df_match_total["Semáforo"] == "🔴 PÉRDIDA"])
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("📦 Total Vinculadas", len(df_match_total))
+    m2.metric("🟢 Rentables", cant_verde)
+    m3.metric("🟡 Margen Bajo", cant_amarillo)
+    m4.metric("🔴 Dando Pérdida", cant_rojo)
+
+    # Filtros directos por Color de Semáforo, Orden y Texto
+    c_col, c_ord, c_busq = st.columns(3)
+    filtro_color = c_col.selectbox("🚦 Filtrar por Color del Semáforo:", [
+        "Todos los colores",
+        "🔴 Solo Pérdidas",
+        "🟡 Solo Margen Bajo",
+        "🟢 Solo Rentables"
+    ])
     orden = c_ord.selectbox("Ordenar tabla por:", ["Título (A - Z)", "Peor a mejor ganancia ($)", "Mejor a peor ganancia ($)", "Margen (%)"])
     filtro = c_busq.text_input("🔍 Buscar por Título o SKU:")
+
     df_t = df_match_total.copy()
+    if filtro_color == "🔴 Solo Pérdidas":
+        df_t = df_t[df_t["Semáforo"] == "🔴 PÉRDIDA"]
+    elif filtro_color == "🟡 Solo Margen Bajo":
+        df_t = df_t[df_t["Semáforo"] == "🟡 BAJO"]
+    elif filtro_color == "🟢 Solo Rentables":
+        df_t = df_t[df_t["Semáforo"] == "🟢 RENTABLE"]
+
     if filtro:
         df_t = df_t[df_t[COL_TITULO_ML].astype(str).str.contains(filtro, case=False, na=False) | df_t["SKU_LIMPIO"].str.contains(filtro, case=False, na=False)]
+
     col_ord = COL_TITULO_ML if orden == "Título (A - Z)" else ("Margen (%)" if orden == "Margen (%)" else "Ganancia Neta ($)")
-    df_t = df_t.sort_values(by=col_ord, ascending=(orden != "Mejor a peor ganancia ($)"))
-
-    m1, m2, m3 = st.columns(3)
-    m1.metric("🟢 Rentables", len(df_t[df_t["Semáforo"] == "🟢 RENTABLE"]))
-    m2.metric("🟡 Margen Bajo", len(df_t[df_t["Semáforo"] == "🟡 BAJO"]))
-    m3.metric("🔴 Dando Pérdida", len(df_t[df_t["Semáforo"] == "🔴 PÉRDIDA"]))
-
-    def pintar(f):
-        c = 'rgba(255, 60, 60, 0.35)' if "🔴" in str(f["Semáforo"]) else ('rgba(255, 200, 0, 0.30)' if "🟡" in str(f["Semáforo"]) else 'rgba(40, 200, 100, 0.25)')
-        return [f'background-color: {c}'] * len(f)
-
-    df_t["Precio Venta ($)"] = df_t["PRECIO_LIMPIO"]
-    df_t["Comisión ML ($)"] = df_t["COMISION_LIMPIA"]
-    df_t["Costo Unidrop ($)"] = df_t["COSTO_LIMPIO"]
-    cols = list(dict.fromkeys(["Semáforo", COL_TITULO_ML, "SKU_LIMPIO", "Características", "Precio Venta ($)", "Comisión ML ($)", "Envío Real ($)", "IIBB Estimado ($)", "Recibís en ML ($)", "Costo Unidrop ($)", "Ganancia Neta ($)", "Margen (%)", "Precio Sugerido ($)"]))
-    st.dataframe(df_t[cols].round(2).style.apply(pintar, axis=1), use_container_width=True, hide_index=True)
-
-    if not sin_match.empty:
-        st.warning(f"⚠️ Hay {len(sin_match)} publicaciones cuyo SKU no figura en Unidrop:")
-        st.dataframe(sin_match[list(dict.fromkeys([COL_ID_ML, "SKU_LIMPIO", COL_TITULO_ML, COL_PRECIO_ML]))], use_container_width=True, hide_index=True)
-
-with tab2:
-    if not df_match_total.empty:
-        opciones = df_match_total[COL_ID_ML].astype(str) + " || " + df_match_total[COL_TITULO_ML].astype(str) + " (" + df_match_total["SKU_LIMPIO"] + ")"
-        sel = st.selectbox("Elegí publicación:", opciones)
-        id_sel = next(iter(sel.split(" || ")))
-        fila = next(iter(df_match_total[df_match_total[COL_ID_ML].astype(str) == id_sel].to_dict('records')))
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Precio Actual ML", f"${fila['PRECIO_LIMPIO']:,.2f}")
-        c2.metric("Recibís Actual ML", f"${fila['Recibís en ML ($)']:,.2f}")
-        c3.metric("Costo Unidrop", f"${fila['COSTO_LIMPIO']:,.2f}")
