@@ -44,13 +44,20 @@ def leer_archivo_inteligente(archivo, es_ml=False):
     else:
         df_raw = pd.read_csv(archivo, sep=None, engine='python', header=None)
     
+    # Buscar en las primeras 30 filas donde aparezcan dos títulos reales juntos
     fila_header = 0
-    for i in range(min(15, len(df_raw))):
-        valores_fila = [str(x).lower() for x in df_raw.iloc[i].values]
-        if any(val.strip() == "sku" for val in valores_fila):
+    for i in range(min(30, len(df_raw))):
+        valores_fila = [str(x).lower().strip() for x in df_raw.iloc[i].values]
+        tiene_id_o_sku = any(p in val for val in valores_fila for p in ["número de publicación", "sku", "código"])
+        tiene_precio_o_titulo = any(p in val for val in valores_fila for p in ["precio", "costo", "título"])
+        if tiene_id_o_sku and tiene_precio_o_titulo:
             fila_header = i
             break
             
+    if es_ml and fila_header == 0:
+        st.warning("🔍 Vista previa de las primeras 10 filas de tu Excel de ML:")
+        st.dataframe(df_raw.head(10))
+
     df_limpio = df_raw.iloc[fila_header + 1:].copy()
     
     cols_unicas = []
@@ -67,7 +74,6 @@ def leer_archivo_inteligente(archivo, es_ml=False):
     df_limpio.columns = cols_unicas
     return df_limpio.reset_index(drop=True)
 
-# Función para limpiar precios con signos $, puntos de miles o comas decimales
 def limpiar_moneda(serie):
     def convertir(val):
         if pd.isna(val):
@@ -77,7 +83,6 @@ def limpiar_moneda(serie):
         texto = re.sub(r'[^\d,.-]', '', str(val)).strip()
         if not texto:
             return 0.0
-        # Si tiene coma y punto (ej: 15.500,50 -> formato argentino)
         if ',' in texto and '.' in texto:
             if texto.rfind(',') > texto.rfind('.'):
                 texto = texto.replace('.', '').replace(',', '.')
@@ -105,7 +110,7 @@ def idx_aprox(lista, palabras):
     return 0
 
 # 4. ASIGNACIÓN DE COLUMNAS
-with st.expander("🔗 Paso rápido: Confirmá qué columna es cada dato", expanded=False):
+with st.expander("🔗 Paso rápido: Confirmá qué columna es cada dato", expanded=True):
     c_ml, c_uni = st.columns(2)
     with c_ml:
         st.markdown("**Mercado Libre:**")
@@ -222,8 +227,3 @@ with tab1:
             return ['background-color: rgba(255, 60, 60, 0.35)'] * len(fila)
         if "🟡" in str(fila["Semáforo"]):
             return ['background-color: rgba(255, 200, 0, 0.30)'] * len(fila)
-        return ['background-color: rgba(40, 200, 100, 0.25)'] * len(fila)
-
-    # Renombramos las columnas limpias para mostrarlas prolijas
-    con_match["Precio Venta ($)"] = con_match["PRECIO_LIMPIO"]
-    con_match["Comisión ML ($)"] = con_match["COMISION_LIMPIA"]
