@@ -5,7 +5,6 @@ import re
 
 st.set_page_config(page_title="Suite Rentabilidad ML + Unidrop", page_icon="💰", layout="wide")
 
-# 1. ACCESO PRIVADO
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
 
@@ -20,13 +19,11 @@ if not st.session_state.autenticado:
             st.error("❌ Contraseña incorrecta")
     st.stop()
 
-# 2. PANEL LATERAL
 st.sidebar.header("⚙️ Parámetros de Cálculo")
 porcentaje_iibb = st.sidebar.number_input("Retenciones / IIBB (%):", 0.0, 30.0, 3.5, 0.5)
 costo_moto_flex = st.sidebar.number_input("Costo promedio moto Flex ($):", 0, 100000, 4500, 500)
 margen_minimo_sano = st.sidebar.slider("Margen mínimo saludable (%):", 1, 50, 12)
 
-# 3. CARGA DE PLANILLAS
 st.title("💰 Centro de Control de Rentabilidad: ML + Unidrop")
 col1, col2 = st.columns(2)
 archivo_ml = col1.file_uploader("1️⃣ Subí tu reporte de Mercado Libre", type=["xlsx", "csv"])
@@ -75,11 +72,8 @@ def idx_aprox(lista, palabras):
 
 df_ml = leer_ml(archivo_ml)
 df_uni = pd.read_excel(archivo_unidrop) if archivo_unidrop.name.endswith('.xlsx') else pd.read_csv(archivo_unidrop, sep=None, engine='python')
+cols_ml, cols_uni = list(df_ml.columns), list(df_uni.columns)
 
-cols_ml = list(df_ml.columns)
-cols_uni = list(df_uni.columns)
-
-# 4. ASIGNACIÓN DE COLUMNAS
 with st.expander("🔗 Verificación de columnas (auto-completado)", expanded=False):
     c_ml, c_uni = st.columns(2)
     COL_ID_ML = c_ml.selectbox("ID Publicación (MLA):", cols_ml, index=idx_aprox(cols_ml, ["número", "id", "publicación"]))
@@ -93,7 +87,6 @@ with st.expander("🔗 Verificación de columnas (auto-completado)", expanded=Fa
     COL_SKU_UNI = c_uni.selectbox("SKU en Unidrop:", cols_uni, index=idx_aprox(cols_uni, ["sku", "código"]))
     COL_COSTO_UNI = c_uni.selectbox("Costo producto ($):", cols_uni, index=idx_aprox(cols_uni, ["costo", "precio"]))
 
-# 5. CRUCE Y CÁLCULOS
 df_ml["SKU_LIMPIO"] = df_ml[COL_SKU_ML].astype(str).str.strip().str.upper()
 df_uni["SKU_LIMPIO"] = df_uni[COL_SKU_UNI].astype(str).str.strip().str.upper()
 df_uni["COSTO_LIMPIO"] = limpiar_moneda(df_uni[COL_COSTO_UNI])
@@ -126,8 +119,9 @@ df_cruce["Características"] = df_cruce[COL_TIPO_PUB].astype(str) + " | " + df_c
 df_match_total = df_cruce.dropna(subset=["COSTO_LIMPIO"]).copy()
 sin_match = df_cruce[df_cruce["COSTO_LIMPIO"].isna()]
 
-# 6. FUNCIONES DE PESTAÑAS (Sin sangrías profundas)
-def mostrar_tab1():
+tab1, tab2, tab3 = st.tabs(["📊 1. Publicaciones Activas", "✏️ 2. Simular Precio", "🆕 3. Cotizar Nuevo"])
+
+with tab1:
     c_ord, c_busq = st.columns(2)
     orden = c_ord.selectbox("Ordenar tabla por:", ["Título (A - Z)", "Peor a mejor ganancia ($)", "Mejor a peor ganancia ($)", "Margen (%)"])
     filtro = c_busq.text_input("🔍 Buscar por Título o SKU:")
@@ -156,24 +150,19 @@ def mostrar_tab1():
         st.warning(f"⚠️ Hay {len(sin_match)} publicaciones cuyo SKU no figura en Unidrop:")
         st.dataframe(sin_match[list(dict.fromkeys([COL_ID_ML, "SKU_LIMPIO", COL_TITULO_ML, COL_PRECIO_ML]))], use_container_width=True, hide_index=True)
 
-def mostrar_tab2():
-    if df_match_total.empty:
-        st.info("No hay publicaciones vinculadas para simular.")
-        return
-    opciones = df_match_total[COL_ID_ML].astype(str) + " || " + df_match_total[COL_TITULO_ML].astype(str) + " (" + df_match_total["SKU_LIMPIO"] + ")"
-    sel = st.selectbox("Elegí publicación:", opciones)
-    id_sel = next(iter(sel.split(" || ")))
-    fila = next(iter(df_match_total[df_match_total[COL_ID_ML].astype(str) == id_sel].to_dict('records')))
-    
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Precio Actual ML", f"${fila['PRECIO_LIMPIO']:,.2f}")
-    c2.metric("Recibís Actual ML", f"${fila['Recibís en ML ($)']:,.2f}")
-    c3.metric("Costo Unidrop", f"${fila['COSTO_LIMPIO']:,.2f}")
-    c4.metric("Ganancia Actual", f"${fila['Ganancia Neta ($)']:,.2f}", f"{fila['Margen (%)']:.1f}%")
-
-    nuevo_p = st.number_input("NUEVO precio de prueba ($):", min_value=1.0, value=max(float(fila['PRECIO_LIMPIO']), 1.0), step=500.0)
-    n_recibis = nuevo_p - (nuevo_p * fila["Tasa_Comision_ML"]) - fila["Envío Real ($)"] - (nuevo_p * (porcentaje_iibb / 100))
-    n_ganancia = n_recibis - fila['COSTO_LIMPIO']
-    n_margen = (n_ganancia / nuevo_p) * 100
-
-    r1, r2, r3 = st.columns(3)
+with tab2:
+    if not df_match_total.empty:
+        opciones = df_match_total[COL_ID_ML].astype(str) + " || " + df_match_total[COL_TITULO_ML].astype(str) + " (" + df_match_total["SKU_LIMPIO"] + ")"
+        sel = st.selectbox("Elegí publicación:", opciones)
+        id_sel = next(iter(sel.split(" || ")))
+        fila = next(iter(df_match_total[df_match_total[COL_ID_ML].astype(str) == id_sel].to_dict('records')))
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Precio Actual ML", f"${fila['PRECIO_LIMPIO']:,.2f}")
+        c2.metric("Recibís Actual ML", f"${fila['Recibís en ML ($)']:,.2f}")
+        c3.metric("Costo Unidrop", f"${fila['COSTO_LIMPIO']:,.2f}")
+        c4.metric("Ganancia Actual", f"${fila['Ganancia Neta ($)']:,.2f}", f"{fila['Margen (%)']:.1f}%")
+        nuevo_p = st.number_input("NUEVO precio de prueba ($):", min_value=1.0, value=max(float(fila['PRECIO_LIMPIO']), 1.0), step=500.0)
+        n_recibis = nuevo_p - (nuevo_p * fila["Tasa_Comision_ML"]) - fila["Envío Real ($)"] - (nuevo_p * (porcentaje_iibb / 100))
+        n_ganancia = n_recibis - fila['COSTO_LIMPIO']
+        n_margen = (n_ganancia / nuevo_p) * 100
+        r1, r2, r3 = st.columns(3)
