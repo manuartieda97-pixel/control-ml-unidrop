@@ -35,7 +35,6 @@ if not archivo_ml or not archivo_unidrop:
     st.info("👆 Subí ambos archivos para comenzar el análisis.")
     st.stop()
 
-# Lector inteligente que busca la pestaña "Publicaciones" y la fila exacta de títulos
 def leer_archivo_inteligente(archivo, es_ml=False):
     if archivo.name.endswith('.xlsx'):
         xl = pd.ExcelFile(archivo)
@@ -52,7 +51,20 @@ def leer_archivo_inteligente(archivo, es_ml=False):
             break
             
     df_limpio = df_raw.iloc[fila_header + 1:].copy()
-    df_limpio.columns = [str(c).strip() for c in df_raw.iloc[fila_header].values]
+    
+    # Garantizar nombres de columnas únicos
+    cols_unicas = []
+    contador = {}
+    for c in df_raw.iloc[fila_header].values:
+        nombre = str(c).strip()
+        if nombre in contador:
+            contador[nombre] += 1
+            cols_unicas.append(f"{nombre}_{contador[nombre]}")
+        else:
+            contador[nombre] = 0
+            cols_unicas.append(nombre)
+            
+    df_limpio.columns = cols_unicas
     return df_limpio.reset_index(drop=True)
 
 df_ml = leer_archivo_inteligente(archivo_ml, es_ml=True)
@@ -91,6 +103,9 @@ with st.expander("🔗 Paso rápido: Confirmá qué columna es cada dato", expan
 df_ml["SKU_LIMPIO"] = df_ml[COL_SKU_ML].astype(str).str.strip().str.upper()
 df_uni["SKU_LIMPIO"] = df_uni[COL_SKU_UNI].astype(str).str.strip().str.upper()
 df_uni[COL_COSTO_UNI] = pd.to_numeric(df_uni[COL_COSTO_UNI], errors='coerce').fillna(0)
+
+# Filtrar filas vacías o de ayuda en ML
+df_ml = df_ml[df_ml["SKU_LIMPIO"].notna() & (df_ml["SKU_LIMPIO"] != "NAN") & (df_ml["SKU_LIMPIO"] != "NONE") & (df_ml["SKU_LIMPIO"] != "")]
 
 df_cruce = pd.merge(
     df_ml,
@@ -146,25 +161,25 @@ with tab1:
             return ['background-color: rgba(255, 215, 0, 0.25)'] * len(fila)
         return ['background-color: rgba(46, 204, 113, 0.20)'] * len(fila)
 
-    cols_tabla = [
+    cols_tabla = list(dict.fromkeys([
         COL_ID_ML, "SKU_LIMPIO", COL_TITULO_ML, COL_TIPO_PUB, COL_PRECIO_ML, 
         COL_COMISION_ML, "Envío Real ($)", "IIBB Estimado ($)", COL_COSTO_UNI, 
         "Ganancia Neta ($)", "Margen (%)", "Precio Sugerido ($)"
-    ]
-    cols_unicas = list(dict.fromkeys(cols_tabla))
-    df_ver = con_match[cols_unicas].round(2)
+    ]))
+    df_ver = con_match[cols_tabla].round(2)
     st.dataframe(df_ver.style.apply(colorear_semaforo, axis=1), use_container_width=True, hide_index=True)
 
     if not sin_match.empty:
         st.warning(f"⚠️ Hay {len(sin_match)} publicaciones cuyo SKU no figura en Unidrop:")
-        st.dataframe(sin_match[[COL_ID_ML, "SKU_LIMPIO", COL_TITULO_ML, COL_PRECIO_ML]], hide_index=True)
+        cols_alerta = list(dict.fromkeys([COL_ID_ML, "SKU_LIMPIO", COL_TITULO_ML, COL_PRECIO_ML]))
+        st.dataframe(sin_match[cols_alerta], use_container_width=True, hide_index=True)
 
 with tab2:
     if not con_match.empty:
         opciones_pub = con_match[COL_ID_ML].astype(str) + " | " + con_match["SKU_LIMPIO"] + " - " + con_match[COL_TITULO_ML].astype(str)
         seleccion = st.selectbox("Elegí publicación:", opciones_pub)
-        id_sel = seleccion.split(" | ")[0]
-        fila_sel = con_match[con_match[COL_ID_ML].astype(str) == id_sel].iloc[0]
+        id_sel = next(iter(seleccion.split(" | ")))
+        fila_sel = next(iter(con_match[con_match[COL_ID_ML].astype(str) == id_sel].to_dict('records')))
         
         c1, c2, c3 = st.columns(3)
         c1.metric("Precio Actual ML", f"${fila_sel[COL_PRECIO_ML]:,.2f}")
@@ -183,16 +198,10 @@ with tab2:
         r3.metric("Nuevo Margen", f"{nuevo_margen:.1f}%", delta=f"{(nuevo_margen - fila_sel['Margen (%)']):.1f}%")
 
 with tab3:
-    sku_buscar = st.selectbox("Seleccioná SKU de Unidrop:", df_uni["SKU_LIMPIO"].unique())
-    prod_uni = df_uni[df_uni["SKU_LIMPIO"] == sku_buscar].iloc[0]
-    costo_base = float(prod_uni[COL_COSTO_UNI])
-    st.info(f"📦 **Costo en Unidrop para {sku_buscar}:** ${costo_base:,.2f}")
-
-    col_a, col_b, col_c = st.columns(3)
-    precio_tentativo = col_a.number_input("Precio estimado ML ($):", min_value=1.0, value=max(costo_base * 1.6, 100.0), step=500.0)
-    comision_est = col_b.number_input("Comisión ML (%):", 0.0, 40.0, 15.5, 0.5)
-    tipo_envio_nuevo = col_c.selectbox("Logística:", ["A cargo del comprador ($0)", "Envío Gratis Mercado Envíos", "Envío Flex"])
-
-    costo_envio_me = st.number_input("Costo estimado Mercado Envíos ($):", 0, 100000, 5500, 500)
-    costo_envio_sim = costo_envio_me if tipo_envio_nuevo == "Envío Gratis Mercado Envíos" else (costo_moto_flex if tipo_envio_nuevo == "Envío Flex" else 0.0)
+    skus_unicos = df_uni["SKU_LIMPIO"].dropna().unique()
+    if len(skus_unicos) > 0:
+        sku_buscar = st.selectbox("Seleccioná SKU de Unidrop:", skus_unicos)
+        prod_uni = next(iter(df_uni[df_uni["SKU_LIMPIO"] == sku_buscar].to_dict('records')))
+        costo_base = float(prod_uni[COL_COSTO_UNI])
+        st.info(f"📦 **Costo en Unidrop para {sku_buscar}:** ${costo_base:,.2f}")
 
