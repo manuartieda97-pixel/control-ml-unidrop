@@ -47,7 +47,7 @@ def leer_archivo_inteligente(archivo, es_ml=False):
     fila_header = 0
     for i in range(min(15, len(df_raw))):
         valores_fila = [str(x).lower() for x in df_raw.iloc[i].values]
-        if any(palabra in val for val in valores_fila for palabra in ["sku", "precio", "costo", "título", "publicación"]):
+        if any(val.strip() == "sku" for val in valores_fila):
             fila_header = i
             break
             
