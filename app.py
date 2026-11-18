@@ -44,28 +44,32 @@ if not archivo_ml or not archivo_unidrop:
 def leer_ml(archivo):
     if archivo.name.endswith('.xlsx'):
         xl = pd.ExcelFile(archivo)
-        hoja = next((h for h in xl.sheet_names if "publicacion" in h.lower()), xl.sheet_names[-1])
-        df_raw = pd.read_excel(archivo, sheet_name=hoja, header=None)
+        hojas_candidatas = [h for h in xl.sheet_names if "publicacion" in h.lower()] + xl.sheet_names
     else:
-        df_raw = pd.read_csv(archivo, sep=None, engine='python', header=None)
-    
-    # Buscar la fila donde empieza "Agrupador de variantes" o "Número de publicación"
-    fila_titulos = 0
-    for i in range(min(60, len(df_raw))):
-        vals = [str(x).strip().lower() for x in df_raw.iloc[i].values]
-        if "número de publicación" in vals or "item_id" in vals:
-            fila_titulos = i
-            break
-            
-    df = df_raw.iloc[fila_titulos + 1:].copy()
-    df.columns = [str(c).strip() for c in df_raw.iloc[fila_titulos].values]
-    # Filtrar solo filas reales que tengan código MLA
-    col_id = "Número de publicación" if "Número de publicación" in df.columns else df.columns[1]
-    df = df[df[col_id].astype(str).str.startswith("MLA", na=False)].reset_index(drop=True)
-    return df
+        hojas_candidatas = [None]
+
+    for hoja in hojas_candidatas:
+        if hoja is not None:
+            df_raw = pd.read_excel(archivo, sheet_name=hoja, header=None)
+        else:
+            df_raw = pd.read_csv(archivo, sep=None, engine='python', header=None)
+
+        for i in range(min(60, len(df_raw))):
+            vals = [str(x).strip().lower() for x in df_raw.iloc[i].values]
+            if "número de publicación" in vals and "precio" in vals:
+                df = df_raw.iloc[i + 1:].copy()
+                df.columns = [str(c).strip() for c in df_raw.iloc[i].values]
+                df = df[df["Número de publicación"].astype(str).str.startswith("MLA", na=False)].reset_index(drop=True)
+                return df
+    return pd.DataFrame()
 
 df_ml = leer_ml(archivo_ml)
+if df_ml.empty:
+    st.error("❌ No se encontraron publicaciones válidas (MLA) con la columna 'Precio' en el archivo de Mercado Libre.")
+    st.stop()
+
 df_uni = pd.read_excel(archivo_unidrop) if archivo_unidrop.name.endswith('.xlsx') else pd.read_csv(archivo_unidrop, sep=None, engine='python')
+df_uni.columns = [str(c).strip() for c in df_uni.columns]
 
 # Limpieza de costos Unidrop
 col_costo_elegida = "Costo total" if (usar_costo_con_iva and "Costo total" in df_uni.columns) else "Costo sin IVA"
@@ -78,7 +82,6 @@ def buscar_mejor_match_unidrop(fila_ml):
     variante_ml = str(fila_ml.get("Variantes", "")).lower()
     texto_ml = f"{titulo_ml} {variante_ml}".strip()
     
-    # Extraer palabras clave relevantes
     palabras_ml = set(re.findall(r'\b[a-z0-9]{2,}\b', texto_ml)) - {"de", "con", "para", "en", "el", "la", "los", "las", "por", "un", "una", "color"}
     
     mejor_score = 0
@@ -96,7 +99,6 @@ def buscar_mejor_match_unidrop(fila_ml):
         similitud_texto = SequenceMatcher(None, texto_ml, desc_u).ratio()
         score = (ratio_palabras * 0.7) + (similitud_texto * 0.3)
         
-        # Bonus si coincide el color (Negro, Blanco, Gris, Azul, Rojo, Verde, Naranja)
         for color in ["negro", "negra", "blanco", "blanca", "gris", "azul", "rojo", "verde", "naranja", "fucsia", "violeta", "plateado"]:
             if color in texto_ml and color in desc_u:
                 score += 0.25
@@ -121,7 +123,6 @@ def calcular_finanzas_fila(fila):
     envio_txt = str(fila.get("Costo de envío", "")).lower()
     forma_txt = str(fila.get("Forma de entrega", "")).lower()
     
-    # 1. Comisión según modalidad de cuotas
     if "agregar cuotas" in cuotas_txt and "no" not in cuotas_txt:
         tasa_com = comision_premium / 100
         badge_cuotas = "💳 Con Cuotas (Premium)"
@@ -134,7 +135,6 @@ def calcular_finanzas_fila(fila):
         
     comision_pesos = precio * tasa_com
     
-    # 2. Costo de envío según planilla
     if "gratis" in envio_txt:
         costo_envio = float(costo_envio_gratis_prom)
         badge_envio = "📦 Envío Gratis (A tu cargo)"
