@@ -35,9 +35,31 @@ if not archivo_ml or not archivo_unidrop:
     st.info("👆 Subí ambos archivos para comenzar el análisis.")
     st.stop()
 
-# Lectura segura de archivos
-df_ml = pd.read_excel(archivo_ml, sheet_name=1, skiprows=3) if archivo_ml.name.endswith('.xlsx') else pd.read_csv(archivo_ml)
-df_uni = pd.read_excel(archivo_unidrop) if archivo_unidrop.name.endswith('.xlsx') else pd.read_csv(archivo_unidrop)
+# Función inteligente que detecta la pestaña y la fila exacta de títulos
+def leer_archivo_inteligente(archivo, es_ml=False):
+    if archivo.name.endswith('.xlsx'):
+        xl = pd.ExcelFile(archivo)
+        # Si es ML y tiene más de una pestaña, elegimos la segunda (Publicaciones)
+        hoja = 1 if (es_ml and len(xl.sheet_names) > 1) else 0
+        df_raw = pd.read_excel(archivo, sheet_name=hoja, header=None)
+    else:
+        # Detectar si el CSV usa coma o punto y coma
+        df_raw = pd.read_csv(archivo, sep=None, engine='python', header=None)
+    
+    # Buscar en las primeras 15 filas dónde están los títulos reales
+    fila_header = 0
+    for i in range(min(15, len(df_raw))):
+        valores_fila = [str(x).lower() for x in df_raw.iloc[i].values]
+        if any(palabra in val for val in valores_fila for palabra in ["sku", "precio", "costo", "título", "publicación"]):
+            fila_header = i
+            break
+            
+    df_limpio = df_raw.iloc[fila_header + 1:].copy()
+    df_limpio.columns = [str(c).strip() for c in df_raw.iloc[fila_header].values]
+    return df_limpio.reset_index(drop=True)
+
+df_ml = leer_archivo_inteligente(archivo_ml, es_ml=True)
+df_uni = leer_archivo_inteligente(archivo_unidrop, es_ml=False)
 
 cols_ml = list(df_ml.columns)
 cols_uni = list(df_uni.columns)
@@ -176,13 +198,3 @@ with tab3:
 
     costo_envio_sim = 0.0
     if tipo_envio_nuevo == "Envío Gratis Mercado Envíos":
-        costo_envio_sim = st.number_input("Costo Mercado Envíos ($):", 0, 100000, 5500, 500)
-    elif tipo_envio_nuevo == "Envío Flex":
-        costo_envio_sim = costo_moto_flex
-
-    ganancia_sim = precio_tentativo - (precio_tentativo * (comision_est / 100)) - (precio_tentativo * (porcentaje_iibb / 100)) - costo_envio_sim - costo_base
-    margen_sim = (ganancia_sim / precio_tentativo) * 100
-
-    p1, p2 = st.columns(2)
-    p1.metric("Ganancia Limpia Estimada", f"${ganancia_sim:,.2f}")
-    p2.metric("Margen Proyectado", f"{margen_sim:.1f}%")
