@@ -36,7 +36,7 @@ if not archivo_ml or not archivo_unidrop:
     st.stop()
 
 # Lectura segura de archivos
-df_ml = pd.read_excel(archivo_ml) if archivo_ml.name.endswith('.xlsx') else pd.read_csv(archivo_ml)
+df_ml = pd.read_excel(archivo_ml, sheet_name=1, skiprows=3) if archivo_ml.name.endswith('.xlsx') else pd.read_csv(archivo_ml)
 df_uni = pd.read_excel(archivo_unidrop) if archivo_unidrop.name.endswith('.xlsx') else pd.read_csv(archivo_unidrop)
 
 cols_ml = list(df_ml.columns)
