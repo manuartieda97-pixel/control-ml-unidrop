@@ -14,7 +14,7 @@ if not st.session_state.autenticado:
     st.title("🔒 Acceso Privado - Suite ML + Unidrop")
     password = st.text_input("Ingresá tu clave secreta:", type="password")
     if st.button("Entrar"):
-        if password == "030897": # Podés cambiar "1234" por tu contraseña
+        if password == "1234": # Podés cambiar "1234" por tu contraseña
             st.session_state.autenticado = True
             st.rerun()
         else:
@@ -65,7 +65,6 @@ if archivo_ml and archivo_unidrop:
         cols_ml = list(df_ml.columns)
         cols_uni = list(df_uni.columns)
 
-        # Función auxiliar para preseleccionar columnas parecidas
         def idx_aprox(lista, palabras):
             for i, col in enumerate(lista):
                 for p in palabras:
@@ -92,12 +91,10 @@ if archivo_ml and archivo_unidrop:
                 COL_SKU_UNI = st.selectbox("SKU en Unidrop:", cols_uni, index=idx_aprox(cols_uni, ["sku", "código"]))
                 COL_COSTO_UNI = st.selectbox("Costo del producto ($):", cols_uni, index=idx_aprox(cols_uni, ["costo", "precio"]))
 
-        # Normalizar SKUs y números
         df_ml["SKU_LIMPIO"] = df_ml[COL_SKU_ML].astype(str).str.strip().str.upper()
         df_uni["SKU_LIMPIO"] = df_uni[COL_SKU_UNI].astype(str).str.strip().str.upper()
         df_uni[COL_COSTO_UNI] = pd.to_numeric(df_uni[COL_COSTO_UNI], errors='coerce').fillna(0)
 
-        # Cruce de datos por SKU
         df_cruce = pd.merge(
             df_ml,
             df_uni[["SKU_LIMPIO", COL_COSTO_UNI]].drop_duplicates(subset=["SKU_LIMPIO"]),
@@ -108,7 +105,6 @@ if archivo_ml and archivo_unidrop:
         df_cruce[COL_PRECIO_ML] = pd.to_numeric(df_cruce[COL_PRECIO_ML], errors='coerce').fillna(0)
         df_cruce[COL_COMISION_ML] = pd.to_numeric(df_cruce[COL_COMISION_ML], errors='coerce').fillna(0).abs()
 
-        # Cálculo de Logística
         def calc_envio(fila):
             forma = str(fila.get(COL_FORMA_ENVIO, "")).lower()
             gratis = str(fila.get(COL_ENVIO_GRATIS, "")).lower()
@@ -123,7 +119,6 @@ if archivo_ml and archivo_unidrop:
         df_cruce["IIBB Estimado ($)"] = df_cruce[COL_PRECIO_ML] * (porcentaje_iibb / 100)
         df_cruce["Tasa_Comision_ML"] = np.where(df_cruce[COL_PRECIO_ML] > 0, df_cruce[COL_COMISION_ML] / df_cruce[COL_PRECIO_ML], 0.15)
 
-        # Ganancia Neta y Margen
         df_cruce["Ganancia Neta ($)"] = (
             df_cruce[COL_PRECIO_ML]
             - df_cruce[COL_COMISION_ML]
@@ -133,7 +128,6 @@ if archivo_ml and archivo_unidrop:
         )
         df_cruce["Margen (%)"] = np.where(df_cruce[COL_PRECIO_ML] > 0, (df_cruce["Ganancia Neta ($)"] / df_cruce[COL_PRECIO_ML]) * 100, 0)
 
-        # Precio Sugerido
         divisor_precio = 1 - df_cruce["Tasa_Comision_ML"] - (porcentaje_iibb / 100) - (margen_minimo_sano / 100)
         df_cruce["Precio Sugerido ($)"] = np.where(
             divisor_precio > 0.05,
@@ -144,9 +138,6 @@ if archivo_ml and archivo_unidrop:
         con_match = df_cruce.dropna(subset=[COL_COSTO_UNI]).sort_values(by="Ganancia Neta ($)", ascending=True)
         sin_match = df_cruce[df_cruce[COL_COSTO_UNI].isna()]
 
-        # ==========================================
-        # PESTAÑAS DE LA APLICACIÓN
-        # ==========================================
         tab1, tab2, tab3 = st.tabs([
             "📊 1. Publicaciones Activas", 
             "✏️ 2. Simular Cambio de Precio", 
@@ -184,8 +175,8 @@ if archivo_ml and archivo_unidrop:
                 seleccion = st.selectbox("Elegí la publicación que querés probar:", opciones_pub)
                 
                 if seleccion:
-                    id_sel = seleccion.split(" | ")[0]
-                    fila_sel = con_match[con_match[COL_ID_ML].astype(str) == id_sel].iloc[0]
+                    id_sel = seleccion.split(" | ")
+                    fila_sel = con_match[con_match[COL_ID_ML].astype(str) == id_sel].iloc
                     
                     c1, c2, c3 = st.columns(3)
                     c1.metric("Precio Actual ML", f"${fila_sel[COL_PRECIO_ML]:,.2f}")
@@ -196,3 +187,9 @@ if archivo_ml and archivo_unidrop:
                     
                     nueva_comision = nuevo_precio * fila_sel["Tasa_Comision_ML"]
                     nuevo_iibb = nuevo_precio * (porcentaje_iibb / 100)
+                    nueva_ganancia = nuevo_precio - nueva_comision - fila_sel["Envío Real ($)"] - nuevo_iibb - fila_sel[COL_COSTO_UNI]
+                    nuevo_margen = (nueva_ganancia / nuevo_precio) * 100
+
+                    st.markdown("### Resultado de la Simulación:")
+                    r1, r2, r3 = st.columns(3)
+                    r1.metric("Nueva Comisión + IIBB", f"${(nueva_comision + nuevo_iibb):,.2f}")
