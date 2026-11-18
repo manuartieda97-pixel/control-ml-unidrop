@@ -36,43 +36,38 @@ if not archivo_ml or not archivo_unidrop:
     st.info("👆 Subí ambos archivos para comenzar el análisis.")
     st.stop()
 
-def leer_archivo_inteligente(archivo, es_ml=False):
-    if archivo.name.endswith('.xlsx'):
-        xl = pd.ExcelFile(archivo)
-        hoja = "Publicaciones" if (es_ml and "Publicaciones" in xl.sheet_names) else (1 if (es_ml and len(xl.sheet_names) > 1) else 0)
-        df_raw = pd.read_excel(archivo, sheet_name=hoja, header=None)
-    else:
-        df_raw = pd.read_csv(archivo, sep=None, engine='python', header=None)
-    
-    # Buscar en las primeras 30 filas donde aparezcan dos títulos reales juntos
-    fila_header = 0
-    for i in range(min(30, len(df_raw))):
-        valores_fila = [str(x).lower().strip() for x in df_raw.iloc[i].values]
-        tiene_id_o_sku = any(p in val for val in valores_fila for p in ["número de publicación", "sku", "código"])
-        tiene_precio_o_titulo = any(p in val for val in valores_fila for p in ["precio", "costo", "título"])
-        if tiene_id_o_sku and tiene_precio_o_titulo:
-            fila_header = i
-            break
-            
-    if es_ml and fila_header == 0:
-        st.warning("🔍 Vista previa de las primeras 10 filas de tu Excel de ML:")
-        st.dataframe(df_raw.head(10))
+# Selector manual de pestaña y fila para Mercado Libre
+if archivo_ml.name.endswith('.xlsx'):
+    xl_ml = pd.ExcelFile(archivo_ml)
+    c_h1, c_h2 = st.columns(2)
+    hoja_ml = c_h1.selectbox("Pestaña del Excel de Mercado Libre:", xl_ml.sheet_names, index=1 if len(xl_ml.sheet_names) > 1 else 0)
+    fila_titulos_ml = c_h2.number_input("¿En qué número de fila empiezan los títulos reales de ML? (Probá 2, 3 o 4):", min_value=0, max_value=15, value=3)
+    df_raw_ml = pd.read_excel(archivo_ml, sheet_name=hoja_ml, header=None)
+else:
+    fila_titulos_ml = st.number_input("¿En qué número de fila empiezan los títulos reales de ML?:", min_value=0, max_value=15, value=0)
+    df_raw_ml = pd.read_csv(archivo_ml, sep=None, engine='python', header=None)
 
-    df_limpio = df_raw.iloc[fila_header + 1:].copy()
-    
-    cols_unicas = []
-    contador = {}
-    for c in df_raw.iloc[fila_header].values:
-        nombre = str(c).strip()
-        if nombre in contador:
-            contador[nombre] += 1
-            cols_unicas.append(f"{nombre}_{contador[nombre]}")
-        else:
-            contador[nombre] = 0
-            cols_unicas.append(nombre)
-            
-    df_limpio.columns = cols_unicas
-    return df_limpio.reset_index(drop=True)
+# Vista previa rápida de las primeras 6 filas para que veas cuál tiene los títulos
+with st.expander("👀 Ver primeras 6 filas crudas de Mercado Libre (para saber qué número de fila elegir arriba)", expanded=True):
+    st.dataframe(df_raw_ml.head(6))
+
+# Aplicamos la fila elegida como títulos
+df_ml = df_raw_ml.iloc[fila_titulos_ml + 1:].copy()
+cols_unicas_ml = []
+cont = {}
+for c in df_raw_ml.iloc[fila_titulos_ml].values:
+    n = str(c).strip()
+    if n in cont:
+        cont[n] += 1
+        cols_unicas_ml.append(f"{n}_{cont[n]}")
+    else:
+        cont[n] = 0
+        cols_unicas_ml.append(n)
+df_ml.columns = cols_unicas_ml
+df_ml = df_ml.reset_index(drop=True)
+
+# Lectura de Unidrop (que ya te funcionaba perfecto)
+df_uni = pd.read_excel(archivo_unidrop) if archivo_unidrop.name.endswith('.xlsx') else pd.read_csv(archivo_unidrop, sep=None, engine='python')
 
 def limpiar_moneda(serie):
     def convertir(val):
@@ -95,9 +90,6 @@ def limpiar_moneda(serie):
         except:
             return 0.0
     return serie.apply(convertir)
-
-df_ml = leer_archivo_inteligente(archivo_ml, es_ml=True)
-df_uni = leer_archivo_inteligente(archivo_unidrop, es_ml=False)
 
 cols_ml = list(df_ml.columns)
 cols_uni = list(df_uni.columns)
@@ -227,3 +219,7 @@ with tab1:
             return ['background-color: rgba(255, 60, 60, 0.35)'] * len(fila)
         if "🟡" in str(fila["Semáforo"]):
             return ['background-color: rgba(255, 200, 0, 0.30)'] * len(fila)
+        return ['background-color: rgba(40, 200, 100, 0.25)'] * len(fila)
+
+    con_match["Precio Venta ($)"] = con_match["PRECIO_LIMPIO"]
+    con_match["Comisión ML ($)"] = con_match["COMISION_LIMPIA"]
