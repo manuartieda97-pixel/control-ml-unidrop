@@ -82,7 +82,7 @@ cols_ml, cols_uni = list(df_ml.columns), list(df_uni.columns)
 with st.expander("🔗 Verificación de columnas (clic para revisar)", expanded=False):
     c_ml, c_uni = st.columns(2)
     COL_ID_ML = c_ml.selectbox("ID Publicación (MLA):", cols_ml, index=idx_exacto(cols_ml, ["número de publicación"], ["publicación"]))
-    COL_SKU_ML = c_ml.selectbox("SKU en ML:", cols_ml, index=idx_exacto(cols_ml, ["sku"], ["sku"], excluir=["universal"]))
+    COL_SKU_ML = c_ml.selectbox("SKU en ML:", cols_ml, index=idx_exacto(cols_ml, ["sku", "número de producto"], ["sku"], excluir=["universal"]))
     COL_TITULO_ML = c_ml.selectbox("Título de la publicación:", cols_ml, index=idx_exacto(cols_ml, ["título"], ["título"], excluir=["número"]))
     COL_PRECIO_ML = c_ml.selectbox("Precio venta ($):", cols_ml, index=idx_exacto(cols_ml, ["precio"], ["precio"]))
     COL_TIPO_PUB = c_ml.selectbox("Tipo publicación (Cuotas):", cols_ml, index=idx_exacto(cols_ml, ["tipo de publicación"], ["publicación"], excluir=["número", "agrupador"]))
@@ -93,8 +93,14 @@ with st.expander("🔗 Verificación de columnas (clic para revisar)", expanded=
     COL_SKU_UNI = c_uni.selectbox("SKU en Unidrop:", cols_uni, index=idx_exacto(cols_uni, ["sku"], ["sku", "código"]))
     COL_COSTO_UNI = c_uni.selectbox("Costo producto ($):", cols_uni, index=idx_exacto(cols_uni, ["costo sin iva", "costo"], ["costo", "precio"]))
 
-# Limpiar SKUs (quitando decimales .0 si Excel los leyó como número)
-df_ml["SKU_LIMPIO"] = df_ml[COL_SKU_ML].astype(str).str.replace(r'\.0$', '', regex=True).str.strip().str.upper()
+# Combinar SKU y Número de producto por si uno de los dos viene vacío
+s1 = df_ml[COL_SKU_ML].astype(str).str.replace(r'\.0$', '', regex=True).str.strip().str.upper()
+if "Número de producto" in df_ml.columns:
+    s2 = df_ml["Número de producto"].astype(str).str.replace(r'\.0$', '', regex=True).str.strip().str.upper()
+    df_ml["SKU_LIMPIO"] = np.where(s1.isin(["NAN", "NONE", ""]), s2, s1)
+else:
+    df_ml["SKU_LIMPIO"] = s1
+
 df_uni["SKU_LIMPIO"] = df_uni[COL_SKU_UNI].astype(str).str.replace(r'\.0$', '', regex=True).str.strip().str.upper()
 df_uni["COSTO_LIMPIO"] = limpiar_moneda(df_uni[COL_COSTO_UNI])
 df_ml = df_ml[df_ml["SKU_LIMPIO"].notna() & (~df_ml["SKU_LIMPIO"].isin(["NAN", "NONE", ""]))]
@@ -181,6 +187,3 @@ with tab1:
         df_t = df_t[df_t["Semáforo"] == "🟢 RENTABLE"]
 
     if filtro:
-        df_t = df_t[df_t[COL_TITULO_ML].astype(str).str.contains(filtro, case=False, na=False) | df_t["SKU_LIMPIO"].str.contains(filtro, case=False, na=False)]
-
-    col_ord = COL_TITULO_ML if orden == "Título (A - Z)" else ("Margen (%)" if orden == "Margen (%)" else "Ganancia Neta ($)")
