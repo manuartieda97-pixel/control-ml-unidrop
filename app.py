@@ -93,13 +93,9 @@ with st.expander("🔗 Verificación de columnas (clic para revisar)", expanded=
     COL_SKU_UNI = c_uni.selectbox("SKU en Unidrop:", cols_uni, index=idx_exacto(cols_uni, ["sku"], ["sku", "código"]))
     COL_COSTO_UNI = c_uni.selectbox("Costo producto ($):", cols_uni, index=idx_exacto(cols_uni, ["costo sin iva", "costo"], ["costo", "precio"]))
 
-# Combinar SKU y Número de producto por si uno de los dos viene vacío
 s1 = df_ml[COL_SKU_ML].astype(str).str.replace(r'\.0$', '', regex=True).str.strip().str.upper()
-if "Número de producto" in df_ml.columns:
-    s2 = df_ml["Número de producto"].astype(str).str.replace(r'\.0$', '', regex=True).str.strip().str.upper()
-    df_ml["SKU_LIMPIO"] = np.where(s1.isin(["NAN", "NONE", ""]), s2, s1)
-else:
-    df_ml["SKU_LIMPIO"] = s1
+s2 = df_ml["Número de producto"].astype(str).str.replace(r'\.0$', '', regex=True).str.strip().str.upper() if "Número de producto" in df_ml.columns else s1
+df_ml["SKU_LIMPIO"] = np.where(s1.isin(["NAN", "NONE", ""]), s2, s1)
 
 df_uni["SKU_LIMPIO"] = df_uni[COL_SKU_UNI].astype(str).str.replace(r'\.0$', '', regex=True).str.strip().str.upper()
 df_uni["COSTO_LIMPIO"] = limpiar_moneda(df_uni[COL_COSTO_UNI])
@@ -112,24 +108,11 @@ df_cruce["ENVIO_ML_LIMPIO"] = limpiar_moneda(df_cruce[COL_COSTO_ENVIO_ML])
 
 def describir_condiciones(fila):
     tipo_raw = str(fila.get(COL_TIPO_PUB, "")).lower()
-    if "premium" in tipo_raw:
-        txt_cuotas = "💳 Con Cuotas (Premium)"
-    elif "clásica" in tipo_raw or "clasica" in tipo_raw:
-        txt_cuotas = "💵 Sin Cuotas (Clásica)"
-    else:
-        txt_cuotas = f"📋 {fila.get(COL_TIPO_PUB, 'Estándar')}"
-
+    txt_cuotas = "💳 Con Cuotas (Premium)" if "premium" in tipo_raw else ("💵 Sin Cuotas (Clásica)" if ("clásica" in tipo_raw or "clasica" in tipo_raw) else f"📋 {fila.get(COL_TIPO_PUB, 'Estándar')}")
     forma_raw = str(fila.get(COL_FORMA_ENVIO, "")).lower()
     gratis_raw = str(fila.get(COL_ENVIO_GRATIS, "")).lower()
     costo_ml = float(fila.get("ENVIO_ML_LIMPIO", 0))
-
-    if "flex" in forma_raw:
-        txt_envio = "🛵 Envío Flex"
-    elif "sí" in gratis_raw or "si" in gratis_raw or "gratis" in forma_raw or "vendedor" in forma_raw or abs(costo_ml) > 0:
-        txt_envio = "📦 Envío Gratis (A tu cargo)"
-    else:
-        txt_envio = "🛒 Envío a cargo comprador"
-
+    txt_envio = "🛵 Envío Flex" if "flex" in forma_raw else ("📦 Envío Gratis (A tu cargo)" if ("sí" in gratis_raw or "si" in gratis_raw or "gratis" in forma_raw or "vendedor" in forma_raw or abs(costo_ml) > 0) else "🛒 Envío a cargo comprador")
     return f"{txt_cuotas} | {txt_envio}"
 
 def calc_envio(fila):
@@ -155,35 +138,25 @@ df_cruce["Semáforo"] = np.where(df_cruce["Ganancia Neta ($)"] < 0, "🔴 PÉRDI
 df_match_total = df_cruce.dropna(subset=["COSTO_LIMPIO"]).copy()
 sin_match = df_cruce[df_cruce["COSTO_LIMPIO"].isna()]
 
-tab1, tab2, tab3 = st.tabs(["📊 1. Publicaciones Activas", "✏️ 2. Simular Precio", "🆕 3. Cotizar Nuevo"])
+# NAVEGACIÓN PLANA (Sin bloques 'with' que rompan la sangría en GitHub)
+vista = st.radio("Seleccioná una sección:", ["📊 1. Publicaciones Activas", "✏️ 2. Simular Precio", "🆕 3. Cotizar Nuevo"], horizontal=True)
+st.divider()
 
-with tab1:
-    cant_verde = len(df_match_total[df_match_total["Semáforo"] == "🟢 RENTABLE"])
-    cant_amarillo = len(df_match_total[df_match_total["Semáforo"] == "🟡 BAJO"])
-    cant_rojo = len(df_match_total[df_match_total["Semáforo"] == "🔴 PÉRDIDA"])
-
+if vista == "📊 1. Publicaciones Activas":
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("📦 Total Vinculadas", len(df_match_total))
-    m2.metric("🟢 Rentables", cant_verde)
-    m3.metric("🟡 Margen Bajo", cant_amarillo)
-    m4.metric("🔴 Dando Pérdida", cant_rojo)
+    m2.metric("🟢 Rentables", len(df_match_total[df_match_total["Semáforo"] == "🟢 RENTABLE"]))
+    m3.metric("🟡 Margen Bajo", len(df_match_total[df_match_total["Semáforo"] == "🟡 BAJO"]))
+    m4.metric("🔴 Dando Pérdida", len(df_match_total[df_match_total["Semáforo"] == "🔴 PÉRDIDA"]))
 
     c_col, c_ord, c_busq = st.columns(3)
-    filtro_color = c_col.selectbox("🚦 Filtrar por Color del Semáforo:", [
-        "Todos los colores",
-        "🔴 Solo Pérdidas",
-        "🟡 Solo Margen Bajo",
-        "🟢 Solo Rentables"
-    ])
+    filtro_color = c_col.selectbox("🚦 Filtrar por Color:", ["Todos los colores", "🔴 Solo Pérdidas", "🟡 Solo Margen Bajo", "🟢 Solo Rentables"])
     orden = c_ord.selectbox("Ordenar tabla por:", ["Título (A - Z)", "Peor a mejor ganancia ($)", "Mejor a peor ganancia ($)", "Margen (%)"])
     filtro = c_busq.text_input("🔍 Buscar por Título o SKU:")
 
     df_t = df_match_total.copy()
-    if filtro_color == "🔴 Solo Pérdidas":
-        df_t = df_t[df_t["Semáforo"] == "🔴 PÉRDIDA"]
-    elif filtro_color == "🟡 Solo Margen Bajo":
-        df_t = df_t[df_t["Semáforo"] == "🟡 BAJO"]
-    elif filtro_color == "🟢 Solo Rentables":
-        df_t = df_t[df_t["Semáforo"] == "🟢 RENTABLE"]
+    if filtro_color == "🔴 Solo Pérdidas": df_t = df_t[df_t["Semáforo"] == "🔴 PÉRDIDA"]
+    if filtro_color == "🟡 Solo Margen Bajo": df_t = df_t[df_t["Semáforo"] == "🟡 BAJO"]
+    if filtro_color == "🟢 Solo Rentables": df_t = df_t[df_t["Semáforo"] == "🟢 RENTABLE"]
+    if filtro: df_t = df_t[df_t[COL_TITULO_ML].astype(str).str.contains(filtro, case=False, na=False) | df_t["SKU_LIMPIO"].str.contains(filtro, case=False, na=False)]
 
-    if filtro:
