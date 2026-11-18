@@ -36,53 +36,17 @@ if not archivo_ml or not archivo_unidrop:
     st.info("👆 Subí ambos archivos para comenzar el análisis.")
     st.stop()
 
-# Detectar automáticamente la pestaña con más datos en el Excel de ML
+# Lectura directa fijada en la pestaña Publicaciones y Fila 2
 if archivo_ml.name.endswith('.xlsx'):
     xl_ml = pd.ExcelFile(archivo_ml)
-    nombres_hojas = xl_ml.sheet_names
-    
-    # Buscar la pestaña "Publicaciones" o la que tenga mayor cantidad de filas
-    idx_mejor_hoja = 0
-    max_filas = -1
-    for idx, nombre in enumerate(nombres_hojas):
-        if "publicacion" in nombre.lower():
-            idx_mejor_hoja = idx
-            break
-        temp_df = pd.read_excel(archivo_ml, sheet_name=nombre, header=None)
-        if len(temp_df) > max_filas:
-            max_filas = len(temp_df)
-            idx_mejor_hoja = idx
-
-    c_h1, c_h2 = st.columns(2)
-    hoja_ml = c_h1.selectbox("Pestaña del Excel de Mercado Libre:", nombres_hojas, index=idx_mejor_hoja)
+    hoja_ml = next((h for h in xl_ml.sheet_names if "publicacion" in h.lower()), xl_ml.sheet_names[-1])
     df_raw_ml = pd.read_excel(archivo_ml, sheet_name=hoja_ml, header=None)
 else:
     df_raw_ml = pd.read_csv(archivo_ml, sep=None, engine='python', header=None)
-    c_h2 = st.container()
 
-if df_raw_ml.empty:
-    st.error("❌ La pestaña seleccionada está vacía. Elegí otra pestaña en el menú de arriba.")
-    st.stop()
-
-# Límite seguro para evitar IndexError
-max_fila_posible = max(0, len(df_raw_ml) - 1)
-fila_sugerida = min(3, max_fila_posible)
-fila_titulos_ml = c_h2.number_input(
-    "¿En qué número de fila empiezan los títulos reales de ML? (Mirá la vista previa abajo):", 
-    min_value=0, 
-    max_value=max_fila_posible, 
-    value=fila_sugerida
-)
-
-with st.expander("👀 Ver primeras 8 filas crudas de Mercado Libre (para verificar el número de fila)", expanded=True):
-    st.dataframe(df_raw_ml.head(8))
-
-# Construir tabla ML limpia desde la fila elegida
-if fila_titulos_ml >= len(df_raw_ml) - 1:
-    st.warning("⚠️ No hay filas de productos debajo de esa fila. Elegí un número de fila más chico arriba.")
-    st.stop()
-
+fila_titulos_ml = 2 if len(df_raw_ml) > 3 else 0
 df_ml = df_raw_ml.iloc[fila_titulos_ml + 1:].copy()
+
 cols_unicas_ml = []
 cont = {}
 for c in df_raw_ml.iloc[fila_titulos_ml].values:
@@ -96,7 +60,6 @@ for c in df_raw_ml.iloc[fila_titulos_ml].values:
 df_ml.columns = cols_unicas_ml
 df_ml = df_ml.reset_index(drop=True)
 
-# Lectura segura de Unidrop
 df_uni = pd.read_excel(archivo_unidrop) if archivo_unidrop.name.endswith('.xlsx') else pd.read_csv(archivo_unidrop, sep=None, engine='python')
 
 def limpiar_moneda(serie):
@@ -132,7 +95,7 @@ def idx_aprox(lista, palabras):
     return 0
 
 # 4. ASIGNACIÓN DE COLUMNAS
-with st.expander("🔗 Paso rápido: Confirmá qué columna es cada dato", expanded=True):
+with st.expander("🔗 Verificación de columnas (se auto-completa solo)", expanded=False):
     c_ml, c_uni = st.columns(2)
     with c_ml:
         st.markdown("**Mercado Libre:**")
@@ -239,3 +202,28 @@ with tab1:
     else:
         con_match = con_match.sort_values(by="Margen (%)", ascending=True)
 
+    m1, m2, m3 = st.columns(3)
+    m1.metric("🟢 Rentables", len(con_match[con_match["Semáforo"] == "🟢 RENTABLE"]))
+    m2.metric("🟡 Margen Bajo", len(con_match[con_match["Semáforo"] == "🟡 BAJO"]))
+    m3.metric("🔴 Dando Pérdida", len(con_match[con_match["Semáforo"] == "🔴 PÉRDIDA"]))
+
+    def colorear_fila(fila):
+        if "🔴" in str(fila["Semáforo"]):
+            return ['background-color: rgba(255, 60, 60, 0.35)'] * len(fila)
+        if "🟡" in str(fila["Semáforo"]):
+            return ['background-color: rgba(255, 200, 0, 0.30)'] * len(fila)
+        return ['background-color: rgba(40, 200, 100, 0.25)'] * len(fila)
+
+    con_match["Precio Venta ($)"] = con_match["PRECIO_LIMPIO"]
+    con_match["Comisión ML ($)"] = con_match["COMISION_LIMPIA"]
+    con_match["Costo Unidrop ($)"] = con_match["COSTO_LIMPIO"]
+
+    cols_tabla = list(dict.fromkeys([
+        "Semáforo", COL_TITULO_ML, "SKU_LIMPIO", "Características", "Precio Venta ($)", 
+        "Comisión ML ($)", "Envío Real ($)", "IIBB Estimado ($)", "Recibís en ML ($)", 
+        "Costo Unidrop ($)", "Ganancia Neta ($)", "Margen (%)", "Precio Sugerido ($)"
+    ]))
+    df_ver = con_match[cols_tabla].round(2)
+    st.dataframe(df_ver.style.apply(colorear_fila, axis=1), use_container_width=True, hide_index=True)
+
+    if not sin_match.empty:
