@@ -35,17 +35,15 @@ if not archivo_ml or not archivo_unidrop:
     st.info("👆 Subí ambos archivos para comenzar el análisis.")
     st.stop()
 
-# Lector inteligente de archivos
+# Lector inteligente que busca la pestaña "Publicaciones" y la fila exacta de títulos
 def leer_archivo_inteligente(archivo, es_ml=False):
     if archivo.name.endswith('.xlsx'):
         xl = pd.ExcelFile(archivo)
-        # Buscamos la pestaña exacta llamada "Publicaciones" en Mercado Libre
         hoja = "Publicaciones" if (es_ml and "Publicaciones" in xl.sheet_names) else (1 if (es_ml and len(xl.sheet_names) > 1) else 0)
         df_raw = pd.read_excel(archivo, sheet_name=hoja, header=None)
     else:
         df_raw = pd.read_csv(archivo, sep=None, engine='python', header=None)
     
-    # Buscar en las primeras 15 filas dónde están los títulos reales
     fila_header = 0
     for i in range(min(15, len(df_raw))):
         valores_fila = [str(x).lower() for x in df_raw.iloc[i].values]
@@ -57,6 +55,18 @@ def leer_archivo_inteligente(archivo, es_ml=False):
     df_limpio.columns = [str(c).strip() for c in df_raw.iloc[fila_header].values]
     return df_limpio.reset_index(drop=True)
 
+df_ml = leer_archivo_inteligente(archivo_ml, es_ml=True)
+df_uni = leer_archivo_inteligente(archivo_unidrop, es_ml=False)
+
+cols_ml = list(df_ml.columns)
+cols_uni = list(df_uni.columns)
+
+def idx_aprox(lista, palabras):
+    for i, col in enumerate(lista):
+        for p in palabras:
+            if p.lower() in str(col).lower():
+                return i
+    return 0
 
 # 4. ASIGNACIÓN DE COLUMNAS
 with st.expander("🔗 Paso rápido: Confirmá qué columna es cada dato", expanded=True):
