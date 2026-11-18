@@ -35,18 +35,15 @@ if not archivo_ml or not archivo_unidrop:
     st.info("👆 Subí ambos archivos para comenzar el análisis.")
     st.stop()
 
-# Función inteligente que detecta la pestaña y la fila exacta de títulos
+# Lector inteligente de archivos
 def leer_archivo_inteligente(archivo, es_ml=False):
     if archivo.name.endswith('.xlsx'):
         xl = pd.ExcelFile(archivo)
-        # Si es ML y tiene más de una pestaña, elegimos la segunda (Publicaciones)
         hoja = 1 if (es_ml and len(xl.sheet_names) > 1) else 0
         df_raw = pd.read_excel(archivo, sheet_name=hoja, header=None)
     else:
-        # Detectar si el CSV usa coma o punto y coma
         df_raw = pd.read_csv(archivo, sep=None, engine='python', header=None)
     
-    # Buscar en las primeras 15 filas dónde están los títulos reales
     fila_header = 0
     for i in range(min(15, len(df_raw))):
         valores_fila = [str(x).lower() for x in df_raw.iloc[i].values]
@@ -111,7 +108,7 @@ def calc_envio(fila):
     costo_ml = float(pd.to_numeric(fila.get(COL_COSTO_ENVIO_ML, 0), errors='coerce') or 0)
     if "flex" in forma:
         return costo_moto_flex - costo_ml if costo_ml < 0 else costo_moto_flex
-    elif "sí" in gratis or "si" in gratis or "gratis" in gratis:
+    if "sí" in gratis or "si" in gratis or "gratis" in gratis:
         return abs(costo_ml)
     return 0.0
 
@@ -145,7 +142,7 @@ with tab1:
     def colorear_semaforo(fila):
         if fila["Ganancia Neta ($)"] < 0:
             return ['background-color: rgba(255, 75, 75, 0.25)'] * len(fila)
-        elif fila["Margen (%)"] < margen_minimo_sano:
+        if fila["Margen (%)"] < margen_minimo_sano:
             return ['background-color: rgba(255, 215, 0, 0.25)'] * len(fila)
         return ['background-color: rgba(46, 204, 113, 0.20)'] * len(fila)
 
@@ -166,8 +163,8 @@ with tab2:
     if not con_match.empty:
         opciones_pub = con_match[COL_ID_ML].astype(str) + " | " + con_match["SKU_LIMPIO"] + " - " + con_match[COL_TITULO_ML].astype(str)
         seleccion = st.selectbox("Elegí publicación:", opciones_pub)
-        id_sel = seleccion.split(" | ")[0]
-        fila_sel = con_match[con_match[COL_ID_ML].astype(str) == id_sel].iloc[0]
+        id_sel = seleccion.split(" | ")
+        fila_sel = con_match[con_match[COL_ID_ML].astype(str) == id_sel].iloc
         
         c1, c2, c3 = st.columns(3)
         c1.metric("Precio Actual ML", f"${fila_sel[COL_PRECIO_ML]:,.2f}")
@@ -187,7 +184,7 @@ with tab2:
 
 with tab3:
     sku_buscar = st.selectbox("Seleccioná SKU de Unidrop:", df_uni["SKU_LIMPIO"].unique())
-    prod_uni = df_uni[df_uni["SKU_LIMPIO"] == sku_buscar].iloc[0]
+    prod_uni = df_uni[df_uni["SKU_LIMPIO"] == sku_buscar].iloc
     costo_base = float(prod_uni[COL_COSTO_UNI])
     st.info(f"📦 **Costo en Unidrop para {sku_buscar}:** ${costo_base:,.2f}")
 
@@ -196,5 +193,6 @@ with tab3:
     comision_est = col_b.number_input("Comisión ML (%):", 0.0, 40.0, 15.5, 0.5)
     tipo_envio_nuevo = col_c.selectbox("Logística:", ["A cargo del comprador ($0)", "Envío Gratis Mercado Envíos", "Envío Flex"])
 
-    costo_envio_sim = 0.0
-    if tipo_envio_nuevo == "Envío Gratis Mercado Envíos":
+    costo_envio_me = st.number_input("Costo estimado Mercado Envíos ($):", 0, 100000, 5500, 500)
+    costo_envio_sim = costo_envio_me if tipo_envio_nuevo == "Envío Gratis Mercado Envíos" else (costo_moto_flex if tipo_envio_nuevo == "Envío Flex" else 0.0)
+
