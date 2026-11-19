@@ -192,7 +192,7 @@ with col_sim1:
         r1, r2, r3 = st.columns(3)
         r1.metric("Nuevo en ML", f"${n_recibis:,.2f}")
         r2.metric("Nueva Ganancia", f"${n_ganancia:,.2f}", delta=f"${(n_ganancia - fila['Ganancia Neta ($)']):,.2f}")
-        r3.metric("Nuevo Margen", f"{n_margen:.1f}%", delta=f"{(n_margen - fila['Margen (%)']):.1f}%")
+        r3.metric("Nuevo Margen", f"{n_margen:.1f}%", delta=f"{(n_margen - fila['Margen Neto (%)']):.1f}%")
 
 with col_sim2:
     st.subheader("🆕 3. Cotizar Producto Nuevo")
