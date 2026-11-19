@@ -179,7 +179,7 @@ if vista == "📊 1. Publicaciones Activas":
     orden = c_ord.selectbox("Ordenar tabla por:", ["Título (A - Z)", "Peor a mejor ganancia ($)", "Mejor a peor ganancia ($)", "Margen (%)"])
     filtro = c_busq.text_input("🔍 Buscar por Título o SKU:")
 
-        df_t = df_vinculadas.copy()
+df_t = df_vinculadas.copy()
     if filtro_color == "🔴 Solo Pérdidas": df_t = df_t[df_t["Semáforo"] == "🔴 PÉRDIDA"]
     if filtro_color == "🟡 Solo Margen Bajo": df_t = df_t[df_t["Semáforo"] == "🟡 BAJO"]
     if filtro_color == "🟢 Solo Rentables": df_t = df_t[df_t["Semáforo"] == "🟢 RENTABLE"]
