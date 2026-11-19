@@ -189,12 +189,12 @@ col_ord = "Título" if orden == "Título (A - Z)" else ("Margen (%)" if orden ==
 df_t = df_t.sort_values(by=col_ord, ascending=(orden != "Mejor a peor ganancia ($)"))
 
 def pintar(f):
- c = 'rgba(255, 60, 60, 0.35)' if "🔴" in str(f["Semáforo"]) else ('rgba(255, 200, 0, 0.30)' if "🟡" in str(f["Semáforo"]) else 'rgba(40, 200, 100, 0.25)')
- return [f'background-color: {c}'] * len(f)
+c = 'rgba(255, 60, 60, 0.35)' if "🔴" in str(f["Semáforo"]) else ('rgba(255, 200, 0, 0.30)' if "🟡" in str(f["Semáforo"]) else 'rgba(40, 200, 100, 0.25)')
+return [f'background-color: {c}'] * len(f)
 
-    cols_ver = ["Semáforo", "Título", "Variantes", "SKU Unidrop", "Condiciones (Cuotas y Envío)", "Precio Venta ($)", "Comisión Est. ($)", "Envío Est. ($)", "IIBB Est. ($)", "Recibís en ML ($)", "Costo Unidrop ($)", "Ganancia Neta ($)", "Margen (%)", "Precio Sugerido ($)"]
-    st.dataframe(df_t[cols_ver].round(2).style.apply(pintar, axis=1), use_container_width=True, hide_index=True)
+cols_ver = ["Semáforo", "Título", "Variantes", "SKU Unidrop", "Condiciones (Cuotas y Envío)", "Precio Venta ($)", "Comisión Est. ($)", "Envío Est. ($)", "IIBB Est. ($)", "Recibís en ML ($)", "Costo Unidrop ($)", "Ganancia Neta ($)", "Margen (%)", "Precio Sugerido ($)"]
+st.dataframe(df_t[cols_ver].round(2).style.apply(pintar, axis=1), use_container_width=True, hide_index=True)
 
-    if not df_sin_vincular.empty:
-        st.warning(f"⚠️ {len(df_sin_vincular)} publicaciones no encontraron coincidencia automática en Unidrop:")
-        st.dataframe(df_sin_vincular[["Número de publicación", "Título", "Variantes", "Precio Venta ($)"]], use_container_width=True, hide_index=True)
+if not df_sin_vincular.empty:
+st.warning(f"⚠️ {len(df_sin_vincular)} publicaciones no encontraron coincidencia automática en Unidrop:")
+st.dataframe(df_sin_vincular[["Número de publicación", "Título", "Variantes", "Precio Venta ($)"]], use_container_width=True, hide_index=True)
