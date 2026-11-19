@@ -180,17 +180,17 @@ if vista == "📊 1. Publicaciones Activas":
     filtro = c_busq.text_input("🔍 Buscar por Título o SKU:")
 
 df_t = df_vinculadas.copy()
-    if filtro_color == "🔴 Solo Pérdidas": df_t = df_t[df_t["Semáforo"] == "🔴 PÉRDIDA"]
-    if filtro_color == "🟡 Solo Margen Bajo": df_t = df_t[df_t["Semáforo"] == "🟡 BAJO"]
-    if filtro_color == "🟢 Solo Rentables": df_t = df_t[df_t["Semáforo"] == "🟢 RENTABLE"]
-    if filtro: df_t = df_t[df_t["Título"].str.contains(filtro, case=False, na=False) | df_t["SKU Unidrop"].str.contains(filtro, case=False, na=False)]
+if filtro_color == "🔴 Solo Pérdidas": df_t = df_t[df_t["Semáforo"] == "🔴 PÉRDIDA"]
+if filtro_color == "🟡 Solo Margen Bajo": df_t = df_t[df_t["Semáforo"] == "🟡 BAJO"]
+if filtro_color == "🟢 Solo Rentables": df_t = df_t[df_t["Semáforo"] == "🟢 RENTABLE"]
+if filtro: df_t = df_t[df_t["Título"].str.contains(filtro, case=False, na=False) | df_t["SKU Unidrop"].str.contains(filtro, case=False, na=False)]
 
-    col_ord = "Título" if orden == "Título (A - Z)" else ("Margen (%)" if orden == "Margen (%)" else "Ganancia Neta ($)")
-    df_t = df_t.sort_values(by=col_ord, ascending=(orden != "Mejor a peor ganancia ($)"))
+col_ord = "Título" if orden == "Título (A - Z)" else ("Margen (%)" if orden == "Margen (%)" else "Ganancia Neta ($)")
+df_t = df_t.sort_values(by=col_ord, ascending=(orden != "Mejor a peor ganancia ($)"))
 
-    def pintar(f):
-        c = 'rgba(255, 60, 60, 0.35)' if "🔴" in str(f["Semáforo"]) else ('rgba(255, 200, 0, 0.30)' if "🟡" in str(f["Semáforo"]) else 'rgba(40, 200, 100, 0.25)')
-        return [f'background-color: {c}'] * len(f)
+def pintar(f):
+ c = 'rgba(255, 60, 60, 0.35)' if "🔴" in str(f["Semáforo"]) else ('rgba(255, 200, 0, 0.30)' if "🟡" in str(f["Semáforo"]) else 'rgba(40, 200, 100, 0.25)')
+ return [f'background-color: {c}'] * len(f)
 
     cols_ver = ["Semáforo", "Título", "Variantes", "SKU Unidrop", "Condiciones (Cuotas y Envío)", "Precio Venta ($)", "Comisión Est. ($)", "Envío Est. ($)", "IIBB Est. ($)", "Recibís en ML ($)", "Costo Unidrop ($)", "Ganancia Neta ($)", "Margen (%)", "Precio Sugerido ($)"]
     st.dataframe(df_t[cols_ver].round(2).style.apply(pintar, axis=1), use_container_width=True, hide_index=True)
