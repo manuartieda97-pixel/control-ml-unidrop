@@ -196,5 +196,5 @@ def pintar(f):
     st.dataframe(df_t[cols_ver].round(2).style.apply(pintar, axis=1), use_container_width=True, hide_index=True)
 
 if not df_sin_vincular.empty:
-st.warning(f"⚠️ {len(df_sin_vincular)} publicaciones no encontraron coincidencia automática en Unidrop:")
-st.dataframe(df_sin_vincular[["Número de publicación", "Título", "Variantes", "Precio Venta ($)"]], use_container_width=True, hide_index=True)
+    st.warning(f"⚠️ {len(df_sin_vincular)} publicaciones no encontraron coincidencia automática en Unidrop:")
+    st.dataframe(df_sin_vincular[["Número de publicación", "Título", "Variantes", "Precio Venta ($)"]], use_container_width=True, hide_index=True)
