@@ -181,3 +181,70 @@ st.divider()
 if vista == "📊 1. Publicaciones Activas":
     c1, c2, c3 = st.columns(3)
     f_col = c1.selectbox("🚦 Filtrar por Color:", ["Todos", "🔴 Solo Pérdidas", "🟡 Solo Margen Bajo", "🟢 Solo Rentables"])
+        orden = c2.selectbox("Ordenar por:", ["Título (A - Z)", "Peor a mejor ganancia ($)", "Mejor a peor ganancia ($)", "Margen Neto (%)"])
+    filtro = c3.text_input("🔍 Buscar por Título o SKU:")
+
+    df_t = df_vinculadas.copy()
+    if f_col == "🔴 Solo Pérdidas": df_t = df_t[df_t["Semáforo"] == "🔴 PÉRDIDA"]
+    if f_col == "🟡 Solo Margen Bajo": df_t = df_t[df_t["Semáforo"] == "🟡 BAJO"]
+    if f_col == "🟢 Solo Rentables": df_t = df_t[df_t["Semáforo"] == "🟢 RENTABLE"]
+    if filtro: df_t = df_t[df_t["Título"].str.contains(filtro, case=False, na=False) | df_t["SKU Unidrop"].str.contains(filtro, case=False, na=False)]
+
+    col_ord = "Título" if orden == "Título (A - Z)" else ("Margen Neto (%)" if orden == "Margen Neto (%)" else "Ganancia Neta ($)")
+    df_t = df_t.sort_values(by=col_ord, ascending=(orden != "Mejor a peor ganancia ($)"))
+
+    def pintar_fila(f):
+        s = str(f["Semáforo"])
+        if "🔴" in s: return ['background-color: #ffcccc; color: #660000'] * len(f)
+        if "🟡" in s: return ['background-color: #fff3cd; color: #664d03'] * len(f)
+        return ['background-color: #d1e7dd; color: #0f5132'] * len(f)
+
+    cols_ver = ["Semáforo", "Título", "Variantes", "Categoría Est.", "Ganancia Neta ($)", "Margen Neto (%)", "Recibís en ML ($)", "Precio Venta ($)", "Costo Unidrop ($)", "Comisión (%)", "Comisión ($)", "Costo Fijo ($)", "Envío ($)", "IIBB ($)", "Condiciones", "Precio Sugerido ($)", "SKU Unidrop"]
+    st.dataframe(df_t[cols_ver].round(2).style.apply(pintar_fila, axis=1), use_container_width=True, hide_index=True, height=600)
+
+    if not df_sin_vincular.empty:
+        st.warning(f"⚠️ {len(df_sin_vincular)} publicaciones sin coincidencia en Unidrop:")
+        st.dataframe(df_sin_vincular[["Número de publicación", "Título", "Variantes", "Precio Venta ($)"]], use_container_width=True, hide_index=True)
+
+if vista == "✏️ 2. Simular Precio" and not df_vinculadas.empty:
+    opciones = df_vinculadas["Número de publicación"].astype(str) + " || " + df_vinculadas["Título"].astype(str) + " (" + df_vinculadas["Variantes"].astype(str) + ")"
+    sel = st.selectbox("Elegí publicación:", opciones)
+    id_sel = next(iter(sel.split(" || ")))
+    fila = next(iter(df_vinculadas[df_vinculadas["Número de publicación"].astype(str) == id_sel].to_dict('records')))
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Precio Actual ML", f"${fila['Precio Venta ($)']:,.2f}")
+    c2.metric("Recibís Actual ML", f"${fila['Recibís en ML ($)']:,.2f}")
+    c3.metric("Costo Unidrop", f"${fila['Costo Unidrop ($)']:,.2f}")
+    c4.metric("Ganancia Neta Actual", f"${fila['Ganancia Neta ($)']:,.2f}", f"{fila['Margen Neto (%)']:.1f}%")
+    nuevo_p = st.number_input("NUEVO precio de prueba ($):", min_value=1.0, value=max(float(fila['Precio Venta ($)']), 1.0), step=500.0)
+    n_fijo = float(fijo_tramo1) if nuevo_p <= tope_tramo1 else (float(fijo_tramo2) if nuevo_p <= tope_tramo2 else (float(fijo_tramo3) if nuevo_p <= tope_tramo3 else 0.0))
+    n_recibis = nuevo_p - (nuevo_p * (fila["Comisión (%)"] / 100)) - n_fijo - fila["Envío ($)"] - (nuevo_p * (porcentaje_iibb / 100))
+    n_ganancia = n_recibis - fila['Costo Unidrop ($)']
+    n_margen = (n_ganancia / nuevo_p) * 100
+    r1, r2, r3 = st.columns(3)
+    r1.metric("Nuevo monto en ML", f"${n_recibis:,.2f}", delta=f"${(n_recibis - fila['Recibís en ML ($)']):,.2f}")
+    r2.metric("Nueva Ganancia Neta", f"${n_ganancia:,.2f}", delta=f"${(n_ganancia - fila['Ganancia Neta ($)']):,.2f}")
+    r3.metric("Nuevo Margen Neto", f"{n_margen:.1f}%", delta=f"{(n_margen - fila['Margen Neto (%)']):.1f}%")
+
+if vista == "🆕 3. Cotizar Nuevo":
+    skus = df_uni["SKU"].dropna().unique()
+    if len(skus) > 0:
+        sku_sel = st.selectbox("Seleccioná SKU de Unidrop:", skus)
+        prod = next(iter(df_uni[df_uni["SKU"] == sku_sel].to_dict('records')))
+        costo_b = float(prod["COSTO_NUM"])
+        st.info(f"📦 **{prod['Descripción']}** | Costo Unidrop: **${costo_b:,.2f}**")
+        ca, cb, cc = st.columns(3)
+        p_tent = ca.number_input("Precio estimado ML ($):", min_value=1.0, value=max(costo_b * 1.6, 100.0), step=500.0)
+        com_est = cb.number_input("Comisión ML (%):", 0.0, 40.0, 15.5, 0.5)
+        log_nueva = cc.selectbox("Logística:", ["A cargo del comprador ($0)", "Envío Gratis Mercado Envíos", "Envío Flex"])
+        c_me = st.number_input("Costo estimado Mercado Envíos ($):", 0, 100000, 6500, 500)
+        c_envio = c_me if log_nueva == "Envío Gratis Mercado Envíos" else (costo_moto_flex if log_nueva == "Envío Flex" else 0.0)
+        fijo_sim = float(fijo_tramo1) if p_tent <= tope_tramo1 else (float(fijo_tramo2) if p_tent <= tope_tramo2 else (float(fijo_tramo3) if p_tent <= tope_tramo3 else 0.0))
+        rec_sim = p_tent - (p_tent * (com_est / 100)) - fijo_sim - (p_tent * (porcentaje_iibb / 100)) - c_envio
+        gan_sim = rec_sim - costo_b
+        mar_sim = (gan_sim / p_tent) * 100
+        p1, p2, p3 = st.columns(3)
+        p1.metric("Recibís neto en ML", f"${rec_sim:,.2f}")
+        p2.metric("Ganancia Neta", f"${gan_sim:,.2f}")
+        p3.metric("Margen Neto (%)", f"{mar_sim:.1f}%")
+
